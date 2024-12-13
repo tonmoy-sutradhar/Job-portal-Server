@@ -30,7 +30,12 @@ async function run() {
       .collection("jobApplication");
 
     app.get("/jobs", async (req, res) => {
-      const cursor = jobCollection.find();
+      const email = req.query.email;
+      let query = {};
+      if (email) {
+        query = { hr_email: email };
+      }
+      const cursor = jobCollection.find(query);
       const result = await cursor.toArray();
       res.send(result);
     });
@@ -39,6 +44,12 @@ async function run() {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await jobCollection.findOne(query);
+      res.send(result);
+    });
+
+    app.post("/jobs", async (req, res) => {
+      const job = req.body;
+      const result = await jobCollection.insertOne(job);
       res.send(result);
     });
 
@@ -52,7 +63,7 @@ async function run() {
 
       // fokira way to aggregate data
       for (const application of result) {
-        console.log(application.job_id);
+        // console.log(application.job_id);
         const query1 = { _id: new ObjectId(application.job_id) };
         const job = await jobCollection.findOne(query1);
 
