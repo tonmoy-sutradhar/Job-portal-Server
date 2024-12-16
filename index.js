@@ -1,5 +1,9 @@
+// require('crypto').randomBytes(64).toString('hex')  --> use for token create
+
 require("dotenv").config();
+var jwt = require("jsonwebtoken");
 const express = require("express");
+const cookieParser = require("cookie-parser");
 const app = express();
 const cors = require("cors");
 const port = process.env.PORT || 5000;
@@ -7,6 +11,7 @@ const port = process.env.PORT || 5000;
 // Middleware
 app.use(cors());
 app.use(express.json());
+app.use(cookieParser());
 
 // Mongodb connection
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
@@ -28,6 +33,18 @@ async function run() {
     const jobApplicationCollection = client
       .db("job-portal")
       .collection("jobApplication");
+
+    // Auth related API's
+    app.post("/jwt", async (req, res) => {
+      const user = req.body;
+      const token = jwt.sign(user, process.env.JWT_SECRET, { expiresIn: "1h" });
+      res
+        .cookie("token", token, {
+          httpOnly: true,
+          secure: false, // http://localhost:500/signIn
+        })
+        .send({ success: true });
+    });
 
     app.get("/jobs", async (req, res) => {
       const email = req.query.email;
