@@ -9,9 +9,42 @@ const cors = require("cors");
 const port = process.env.PORT || 5000;
 
 // Middleware
-app.use(cors());
 app.use(express.json());
 app.use(cookieParser());
+app.use(
+  cors({
+    origin: ["http://localhost:5173"],
+    credentials: true,
+  })
+);
+
+// lOGGER
+const logger = (req, res, next) => {
+  console.log("Inside the logger.");
+  next();
+};
+
+// Verify Token
+const verifyToken = (req, res, next) => {
+  console.log("Inside verify token Middleware");
+  const token = req?.cookies?.token;
+
+  if (!token) {
+    return res.status(401).send({ message: "Unauthorize access." });
+  }
+
+  jwt.verify(token, process.env.ACCESS_TOKEN_JWT_SECRET, (err, decode) => {
+    if (err) {
+      return res.status(401).send({ message: "Unauthorize access" });
+    }
+
+    ///
+
+    next();
+
+    // 60,6 no vedio done.
+  });
+};
 
 // Mongodb connection
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
@@ -37,7 +70,9 @@ async function run() {
     // Auth related API's
     app.post("/jwt", async (req, res) => {
       const user = req.body;
-      const token = jwt.sign(user, process.env.JWT_SECRET, { expiresIn: "1h" });
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN_JWT_SECRET, {
+        expiresIn: "1h",
+      });
       res
         .cookie("token", token, {
           httpOnly: true,
@@ -46,7 +81,8 @@ async function run() {
         .send({ success: true });
     });
 
-    app.get("/jobs", async (req, res) => {
+    app.get("/jobs", logger, async (req, res) => {
+      console.log("Now inside the other API callback");
       const email = req.query.email;
       let query = {};
       if (email) {
@@ -73,9 +109,10 @@ async function run() {
     // Jobs Applications data post
     // get all data , get some data, get one data [0,1,many]
     // http://localhost:5000/job-applications?email=tonmoysutradhar@gmail.com (search like this)
-    app.get("/job-applications", async (req, res) => {
+    app.get("/job-applications", verifyToken, async (req, res) => {
       const email = req.query.email;
       const query = { applicant_email: email };
+      // console.log(req.cookies);
       const result = await jobApplicationCollection.find(query).toArray();
 
       // fokira way to aggregate data
@@ -95,9 +132,56 @@ async function run() {
       res.send(result);
     });
 
+    // app.get('/job-applications/:id') ==> get a job application by id
+
+    app.get("/job-applications/jobs/:job_id", async (req, res) => {
+      const jobId = req.params.job_id;
+      const query = { job_id: jobId };
+      const result = await jobApplicationCollection.find(query).toArray();
+      res.send(result);
+    });
+
     app.post("/job-applications", async (req, res) => {
       const application = req.body;
       const result = await jobApplicationCollection.insertOne(application);
+      // Not the best way (use aggregate)
+      const id = application.job_id;
+      const query = { _id: new ObjectId(id) };
+      const job = await jobCollection.findOne(query);
+      // console.log(job);
+
+      let newCount = 0;
+      if (job.applicationCount) {
+        newCount = job.applicationCount + 1;
+      } else {
+        newCount = 1;
+      }
+
+      // now update the job info
+      const filter = { _id: new ObjectId(id) };
+      const updateDoc = {
+        $set: {
+          application: newCount,
+        },
+      };
+      const updateResult = await jobCollection.updateOne(filter, updateDoc);
+      res.send(result);
+    });
+
+    // for status update  ==> like: pending , hired
+    app.patch("/job-applications/:id", async (req, res) => {
+      const id = req.params.id;
+      const data = req.body;
+      const filter = { _id: new ObjectId(id) };
+      const updateDoc = {
+        $set: {
+          status: data.status,
+        },
+      };
+      const result = await jobApplicationCollection.updateOne(
+        filter,
+        updateDoc
+      );
       res.send(result);
     });
 
