@@ -13,7 +13,11 @@ app.use(express.json());
 app.use(cookieParser());
 app.use(
   cors({
-    origin: ["http://localhost:5173"],
+    origin: [
+      "http://localhost:5173",
+      "https://job-portal-e5e9d.web.app",
+      "https://job-portal-e5e9d.firebaseapp.com/",
+    ],
     credentials: true,
   })
 );
@@ -37,12 +41,8 @@ const verifyToken = (req, res, next) => {
     if (err) {
       return res.status(401).send({ message: "Unauthorize access" });
     }
-
-    ///
-
+    req.user = decode;
     next();
-
-    // 60,6 no vedio done.
   });
 };
 
@@ -60,7 +60,7 @@ const client = new MongoClient(uri, {
 
 async function run() {
   try {
-    await client.connect();
+    // await client.connect();
     const jobCollection = client.db("job-portal").collection("job");
 
     const jobApplicationCollection = client
@@ -76,9 +76,16 @@ async function run() {
       res
         .cookie("token", token, {
           httpOnly: true,
-          secure: false, // http://localhost:500/signIn
+          // secure: false, // http://localhost:500/signIn
+          secure: process.env.NODE_ENV === "production",
         })
         .send({ success: true });
+    });
+
+    app.post("/logout", async (req, res) => {
+      res
+        .clearCookie("token", { httpOnly: true, secure: false })
+        .send({ Logout_success: true });
     });
 
     app.get("/jobs", logger, async (req, res) => {
@@ -112,6 +119,11 @@ async function run() {
     app.get("/job-applications", verifyToken, async (req, res) => {
       const email = req.query.email;
       const query = { applicant_email: email };
+
+      // Handle forbidden access.--->
+      if (req.user.email !== req.query.email) {
+        return res.status(403).send({ message: "Forbidden access." });
+      }
       // console.log(req.cookies);
       const result = await jobApplicationCollection.find(query).toArray();
 
@@ -185,7 +197,7 @@ async function run() {
       res.send(result);
     });
 
-    await client.db("admin").command({ ping: 1 });
+    // await client.db("admin").command({ ping: 1 });
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!"
     );
